@@ -1,3 +1,4 @@
+//SPDX-License-Identifier: MIT
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
@@ -14,10 +15,15 @@ contract LotteryNFT is ERC721, Ownable {
     mapping (uint256 => uint256) public issueIndex;
     mapping (uint256 => bool) public claimInfo;
 
-    constructor() public ERC721("GoldenGoose Lottery Ticket", "GLT") {}
+    constructor() public ERC721("Momo Lottery Ticket", "MLT") {}
 
-    function newLotteryItem(address player, uint8[4] memory _lotteryNumbers, uint256 _amount, uint256 _issueIndex)
-        external onlyOwner
+    function newLotteryItem(
+        address player, 
+        uint8[4] memory _lotteryNumbers, 
+        uint256 _amount, 
+        uint256 _issueIndex
+    )
+        public onlyOwner
         returns (uint256)
     {
         _tokenIds.increment();
@@ -45,9 +51,9 @@ contract LotteryNFT is ERC721, Ownable {
     function claimReward(uint256 tokenId) external onlyOwner {
         claimInfo[tokenId] = true;
     }
-    function multiClaimReward(uint256[] memory tokenIds) external onlyOwner {
-        for (uint i = 0; i < tokenIds.length; i++) {
-            claimInfo[tokenIds[i]] = true;
+    function multiClaimReward(uint256[] memory _tokenIdList) external onlyOwner {
+        for (uint i = 0; i < _tokenIdList.length; i++) {
+            claimInfo[_tokenIdList[i]] = true;
         }
     }
     function burn(uint256 tokenId) external onlyOwner {
