@@ -66,7 +66,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
     uint256 public totalAllocPoint = 0;
     // The block number when MOMO mining starts.
     uint256 public startBlock;
-    uint256 public momoRewardBalance;
+    uint256 public totalmomoInPools;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
@@ -87,7 +87,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
         feeAddress = _feeAddress;
         momoPerBlock = _momoPerBlock;
         startBlock = _startBlock;
-        momoRewardBalance = 0;
+        totalmomoInPools = 0;
     }
 
     function poolLength() external view returns (uint256) {
@@ -170,7 +170,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
         uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
         uint256 momoReward = multiplier.mul(momoPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
         momo.transfer(devaddr, momoReward.div(10));
-        momoRewardBalance = momoRewardBalance.add(momoReward);
         pool.accMomoPerShare = pool.accMomoPerShare.add(momoReward.mul(1e12).div(lpSupply));
         pool.lastRewardBlock = block.number;
     }
@@ -192,8 +191,14 @@ contract MasterChef is Ownable, ReentrancyGuard {
                 uint256 depositFee = _amount.mul(pool.depositFeeBP).div(10000);
                 pool.lpToken.safeTransfer(feeAddress, depositFee);
                 user.amount = user.amount.add(_amount).sub(depositFee);
+                if (address(pool.lpToken) == address(momo)) {
+                    totalmomoInPools = totalmomoInPools.add(_amount).sub(depositFee);
+                }
             } else {
                 user.amount = user.amount.add(_amount);
+                if (address(pool.lpToken) == address(momo)) {
+                    totalmomoInPools = totalmomoInPools.add(_amount);
+                }
             }
         }
         user.rewardDebt = user.amount.mul(pool.accMomoPerShare).div(1e12);
@@ -213,6 +218,9 @@ contract MasterChef is Ownable, ReentrancyGuard {
         if (_amount > 0) {
             user.amount = user.amount.sub(_amount);
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
+            if (address(pool.lpToken) == address(momo)) {
+                totalmomoInPools = totalmomoInPools.sub(_amount);
+            }
         }
         user.rewardDebt = user.amount.mul(pool.accMomoPerShare).div(1e12);
         emit Withdraw(msg.sender, _pid, _amount);
@@ -225,6 +233,9 @@ contract MasterChef is Ownable, ReentrancyGuard {
         uint256 amount = user.amount;
         user.amount = 0;
         user.rewardDebt = 0;
+        if (address(pool.lpToken) == address(momo)) {
+            totalmomoInPools = totalmomoInPools.sub(amount);
+        }
         pool.lpToken.safeTransfer(address(msg.sender), amount);
         emit EmergencyWithdraw(msg.sender, _pid, amount);
     }
@@ -233,8 +244,8 @@ contract MasterChef is Ownable, ReentrancyGuard {
         return momo.balanceOf(address(this));
     }
 
-    function getMomoRewardBalance() public view returns (uint256) {
-        return momoRewardBalance;
+    function getTotalMomoInPools() public view returns (uint256) {
+        return totalmomoInPools;
     }
 
     function approveMomoToOwner(address _spender, uint256 _amount) public onlyOwner returns(bool){
@@ -253,17 +264,14 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // Safe momo transfer function, just in case if rounding error causes pool to not have enough MOMOs.
     function safeMomoTransfer(address _to, uint256 _amount) internal {
-        uint256 momoBal = momo.balanceOf(address(this));
-        require(momoBal >= momoRewardBalance, "token: insufficient");
-        bool transferSuccess = false;
-        if (_amount > momoRewardBalance) {
-            transferSuccess = momo.transfer(_to, momoRewardBalance);
-            momoRewardBalance = 0;
-        } else {
-            transferSuccess = momo.transfer(_to, _amount);
-            momoRewardBalance = momoRewardBalance.sub(_amount);
+        if (momo.balanceOf(address(this)) > totalmomoInPools) {
+            uint256 momoBal = momo.balanceOf(address(this)).sub(totalmomoInPools);
+            if (_amount >=  momoBal) {
+                momo.transfer(_to, momoBal);
+            } else if (_amount > 0) {
+                momo.transfer(_to, _amount);
+            }
         }
-        require(transferSuccess, "safeMomoTransfer: transfer failed");
     }
 
     // Update dev address by the previous dev.
